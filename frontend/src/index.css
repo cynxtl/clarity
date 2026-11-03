@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: #F4F7FB;
+    --surface-1: #FFFFFF;
+    --surface-2: #F8FAFC;
+    --surface-3: #EEF2F7;
+    
+    --foreground: #172033;
+    --foreground-muted: #596780;
+    --foreground-dim: #7B8B9E;
+    
+    --border: #E3E9F2;
+    --border-subtle: #EDF2F7;
+    
+    --primary: #335CDB;
+    --primary-hover: #274AB8;
+    --primary-foreground: #FFFFFF;
+    --primary-light: #EAF0FF;
+
+    --teal: #159A90;
+    --teal-bg: #E7F6F5;
+    --teal-border: #A3DED9;
+    
+    --success: #16856F;
+    --success-bg: #E8F8F5;
+    --success-border: #B6E8DE;
+    
+    --warning: #B7791F;
+    --warning-bg: #FEF7EC;
+    --warning-border: #F8DCAC;
+    
+    --danger: #D95C5C;
+    --danger-bg: #FDF2F2;
+    --danger-border: #F9CACA;
+
+    --info: #3B82C4;
+    --info-bg: #EEF6FC;
+    --info-border: #C3DFF5;
+    
+    --sidebar-bg: #FFFFFF;
+    --sidebar-border: #E3E9F2;
+
+    /* Restrained Liquid Glass Tokens (Light) */
+    --glass-bg: rgba(255, 255, 255, 0.82);
+    --glass-border: rgba(227, 233, 242, 0.9);
+    --glass-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+    --glass-shadow: 0 4px 20px rgba(23, 32, 51, 0.05);
+  }
+
+  .dark {
+    --background: #0B1220;
+    --surface-1: #111C2D;
+    --surface-2: #172438;
+    --surface-3: #1F304B;
+    
+    --foreground: #E8EEF7;
+    --foreground-muted: #9AAAC0;
+    --foreground-dim: #798CA6;
+    
+    --border: #28364A;
+    --border-subtle: #1E2B3E;
+    
+    --primary: #91A8FF;
+    --primary-hover: #ADC0FF;
+    --primary-foreground: #0B1220;
+    --primary-light: #1A2B52;
+
+    --teal: #5BD4C5;
+    --teal-bg: rgba(91, 212, 197, 0.12);
+    --teal-border: rgba(91, 212, 197, 0.28);
+    
+    --success: #55C7A2;
+    --success-bg: rgba(85, 199, 162, 0.12);
+    --success-border: rgba(85, 199, 162, 0.28);
+    
+    --warning: #E7B45C;
+    --warning-bg: rgba(231, 180, 92, 0.12);
+    --warning-border: rgba(231, 180, 92, 0.28);
+    
+    --danger: #F07878;
+    --danger-bg: rgba(240, 120, 120, 0.12);
+    --danger-border: rgba(240, 120, 120, 0.28);
+
+    --info: #79ADF0;
+    --info-bg: rgba(121, 173, 240, 0.12);
+    --info-border: rgba(121, 173, 240, 0.28);
+    
+    --sidebar-bg: #0E1626;
+    --sidebar-border: #202D40;
+
+    /* Restrained Liquid Glass Tokens (Dark) */
+    --glass-bg: rgba(17, 28, 45, 0.82);
+    --glass-border: rgba(40, 54, 74, 0.85);
+    --glass-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  }
+}
+
+body {
+  margin: 0;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Geist", "Inter", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* Monospace text */
+code, kbd, samp, pre, .font-mono {
+  font-family: ui-monospace, SFMono-Regular, "Geist Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+/* Restrained Liquid Glass Utilities */
+.liquid-glass {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+}
+
+.liquid-glass-drawer {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-left: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), -10px 0 32px rgba(0, 0, 0, 0.35);
+}
+
+.liquid-glass-dropdown {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.liquid-glass-modal {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-highlight), 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--foreground-dim);
+}

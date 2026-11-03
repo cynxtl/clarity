@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+backend/venv/
+backend/__pycache__/
+backend/*/__pycache__/
+backend/*/*/__pycache__/
+
+# Build artifacts
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# SQLite databases & temp storage
+backend/data/*.db
+backend/data/workspaces/
+
+# Environment files
+.env
+backend/.env
+
+# Pytest & test caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local verification artifacts & OS files
+screenshots/
+*.pyc
+.DS_Store
+Thumbs.db
+
