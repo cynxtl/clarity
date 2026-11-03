@@ -1,22 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Save,
   Check,
-  Bot,
   FileText,
   Clock,
   Eye,
   Columns,
   Code2,
   Sparkles,
-  BookOpen
+  BookOpen,
+  History,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { api } from '../services/api';
-import { DocumentFile } from '../types';
+import { DocumentFile, AIStatus, AIRevision } from '../types';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardHeader } from '../components/ui/Card';
+import { AIAssistantPanel } from '../components/studio/AIAssistantPanel';
+import { AIReviewModal } from '../components/studio/AIReviewModal';
 
 export const StudioView: React.FC = () => {
   const { currentWorkspace } = useWorkspace();
@@ -28,6 +32,29 @@ export const StudioView: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
 
+  // Selection tracking
+  const [selectedText, setSelectedText] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // AI Authoring State
+  const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [activeRevision, setActiveRevision] = useState<AIRevision | null>(null);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [sidecarTab, setSidecarTab] = useState<'assistant' | 'diagnostics' | 'history'>('assistant');
+  const [recentRevisions, setRecentRevisions] = useState<AIRevision[]>([]);
+
+  // Fetch AI status
+  useEffect(() => {
+    api.getAIStatus().then(setAiStatus).catch(err => {
+      console.warn('Failed to load AI status:', err);
+    });
+  }, []);
+
+  // Fetch file list
   useEffect(() => {
     if (currentWorkspace) {
       api.listFiles(currentWorkspace.id).then(list => {
@@ -37,8 +64,23 @@ export const StudioView: React.FC = () => {
           handleSelectFile(mdFiles[0]);
         }
       });
+      loadRevisions();
     }
   }, [currentWorkspace?.id]);
+
+  const loadRevisions = async () => {
+    if (!currentWorkspace) return;
+    try {
+      const revs = await api.listRevisions(currentWorkspace.id);
+      setRecentRevisions(revs);
+      const pending = revs.find(r => r.status === 'pending');
+      if (pending && !activeRevision) {
+        setActiveRevision(pending);
+      }
+    } catch (err) {
+      console.warn('Could not load revisions:', err);
+    }
+  };
 
   const handleSelectFile = async (file: DocumentFile) => {
     setSelectedFile(file);
@@ -47,6 +89,7 @@ export const StudioView: React.FC = () => {
     setContent(data.content);
     setSaveSuccess(false);
     setIsDirty(false);
+    setSelectedText('');
   };
 
   const handleContentChange = (val: string) => {
@@ -65,6 +108,201 @@ export const StudioView: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 2500);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTextareaSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start !== end) {
+      setSelectedText(el.value.substring(start, end));
+    } else {
+      setSelectedText('');
+    }
+  };
+
+  // -------------------------------------------------------------
+  // AI Operations Handlers
+  // -------------------------------------------------------------
+  const handleRunRewrite = async (params: { tone: string; custom_instruction: string; use_glossary: boolean }) => {
+    if (!currentWorkspace || !selectedFile) return;
+    try {
+      setAiLoading(true);
+      const targetText = selectedText || content;
+      const rev = await api.rewriteText({
+        workspace_id: currentWorkspace.id,
+        file_path: selectedFile.path,
+        document_title: selectedFile.filename,
+        selected_text: targetText,
+        full_content: content,
+        tone: params.tone,
+        custom_instruction: params.custom_instruction,
+        use_glossary: params.use_glossary,
+      });
+      setActiveRevision(rev);
+      setIsReviewOpen(true);
+      loadRevisions();
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'AI Rewrite failed.' });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleRunSimplify = async (params: { audience: string; custom_instruction: string; use_glossary: boolean }) => {
+    if (!currentWorkspace || !selectedFile) return;
+    try {
+      setAiLoading(true);
+      const targetText = selectedText || content;
+      const rev = await api.simplifyText({
+        workspace_id: currentWorkspace.id,
+        file_path: selectedFile.path,
+        selected_text: targetText,
+        audience: params.audience,
+        custom_instruction: params.custom_instruction,
+        use_glossary: params.use_glossary,
+      });
+      setActiveRevision(rev);
+      setIsReviewOpen(true);
+      loadRevisions();
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'Simplification failed.' });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleRunProcedure = async (params: {
+    task_description: string;
+    prerequisites: string[];
+    source_notes: string;
+    expected_outcome: string;
+    warnings: string[];
+    tone: string;
+    use_glossary: boolean;
+  }) => {
+    if (!currentWorkspace || !selectedFile) return;
+    try {
+      setAiLoading(true);
+      const rev = await api.generateProcedure({
+        workspace_id: currentWorkspace.id,
+        file_path: selectedFile.path,
+        task_description: params.task_description,
+        prerequisites: params.prerequisites,
+        source_notes: params.source_notes,
+        expected_outcome: params.expected_outcome,
+        warnings: params.warnings,
+        tone: params.tone,
+        use_glossary: params.use_glossary,
+      });
+      setActiveRevision(rev);
+      setIsReviewOpen(true);
+      loadRevisions();
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'Procedure generation failed.' });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleRunDocs = async (params: {
+    doc_type: string;
+    feature_brief: string;
+    code_examples: string;
+    technical_specs: string;
+    tone: string;
+    use_glossary: boolean;
+  }) => {
+    if (!currentWorkspace || !selectedFile) return;
+    try {
+      setAiLoading(true);
+      const rev = await api.generateDocs({
+        workspace_id: currentWorkspace.id,
+        file_path: selectedFile.path,
+        doc_type: params.doc_type,
+        feature_brief: params.feature_brief,
+        code_examples: params.code_examples,
+        technical_specs: params.technical_specs,
+        tone: params.tone,
+        use_glossary: params.use_glossary,
+      });
+      setActiveRevision(rev);
+      setIsReviewOpen(true);
+      loadRevisions();
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'Documentation generation failed.' });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleRunReleaseNotes = async (params: {
+    version: string;
+    release_date: string;
+    added: string[];
+    changed: string[];
+    fixed: string[];
+    deprecated: string[];
+    removed: string[];
+    tone: string;
+  }) => {
+    if (!currentWorkspace || !selectedFile) return;
+    try {
+      setAiLoading(true);
+      const rev = await api.generateReleaseNotes({
+        workspace_id: currentWorkspace.id,
+        file_path: selectedFile.path,
+        version: params.version,
+        release_date: params.release_date,
+        added: params.added,
+        changed: params.changed,
+        fixed: params.fixed,
+        deprecated: params.deprecated,
+        removed: params.removed,
+        tone: params.tone,
+      });
+      setActiveRevision(rev);
+      setIsReviewOpen(true);
+      loadRevisions();
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message || 'Release notes generation failed.' });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAcceptRevision = async (revisionId: string, force = false) => {
+    try {
+      setAccepting(true);
+      const res = await api.acceptRevision(revisionId, content, force);
+      setContent(res.updated_content);
+      setIsDirty(false);
+      setSaveSuccess(true);
+      setActiveRevision(null);
+
+      const delta = res.quality_impact.score_delta;
+      const deltaMsg = delta >= 0 ? `+${delta}` : `${delta}`;
+      setNotification({
+        type: 'success',
+        message: `Accepted! Quality score: ${res.quality_impact.score_after} (${deltaMsg} pts). File saved to disk.`,
+      });
+      loadRevisions();
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleRejectRevision = async (revisionId: string) => {
+    try {
+      setRejecting(true);
+      await api.rejectRevision(revisionId);
+      setActiveRevision(null);
+      setNotification({ type: 'success', message: 'Proposal rejected and archived.' });
+      loadRevisions();
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -167,11 +405,25 @@ export const StudioView: React.FC = () => {
             Writing Studio
           </h2>
           <p className="text-xs text-[var(--foreground-muted)]">
-            Technical writing canvas with live structural validation and editorial preview.
+            Intelligent technical authoring canvas with AI assistance and deterministic validation.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
+          {notification && (
+            <div className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all ${
+              notification.type === 'success'
+                ? 'bg-[var(--success-bg)] text-[var(--success)] border border-[var(--success-border)]'
+                : 'bg-[var(--danger-bg)] text-[var(--danger)] border border-[var(--danger-border)]'
+            }`}>
+              {notification.type === 'success' ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+              <span>{notification.message}</span>
+              <button onClick={() => setNotification(null)} className="ml-1 opacity-70 hover:opacity-100 cursor-pointer">
+                ×
+              </button>
+            </div>
+          )}
+
           {isDirty && (
             <span className="text-[11px] font-mono text-[var(--warning)] font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--warning-bg)] border border-[var(--warning-border)] shadow-2xs">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)] animate-pulse" />
@@ -211,7 +463,7 @@ export const StudioView: React.FC = () => {
                   const target = files.find(f => f.path === e.target.value);
                   if (target) handleSelectFile(target);
                 }}
-                className="bg-[var(--surface-1)] border border-[var(--border)] rounded-lg px-2.5 py-1 text-xs font-mono font-medium text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] shadow-2xs"
+                className="bg-[var(--surface-1)] border border-[var(--border)] rounded-lg px-2.5 py-1 text-xs font-mono font-medium text-[var(--foreground)] focus:outline-none focus:border-[var(--primary)] shadow-2xs cursor-pointer"
               >
                 {files.map(f => (
                   <option key={f.id} value={f.path}>
@@ -275,8 +527,12 @@ export const StudioView: React.FC = () => {
             {(viewMode === 'editor' || viewMode === 'split') && (
               <div className="flex-1 h-full p-4 overflow-auto focus-within:ring-1 focus-within:ring-[var(--primary)]/30 transition-all">
                 <textarea
+                  ref={textareaRef}
                   value={content}
                   onChange={e => handleContentChange(e.target.value)}
+                  onSelect={handleTextareaSelect}
+                  onKeyUp={handleTextareaSelect}
+                  onMouseUp={handleTextareaSelect}
                   className="w-full h-full bg-transparent text-[var(--foreground)] resize-none focus:outline-none font-mono text-xs leading-relaxed"
                   placeholder="Draft technical documentation..."
                   spellCheck={false}
@@ -295,76 +551,170 @@ export const StudioView: React.FC = () => {
           </div>
         </div>
 
-        {/* Diagnostics & Roadmap Sidecar (4 Cols) */}
-        <div className="lg:col-span-4 flex flex-col space-y-4 overflow-y-auto">
-          {/* Real-Time Deterministic Quality Diagnostics */}
-          <Card>
-            <CardHeader
-              title="Real-Time Lint Feedback"
-              subtitle="Live heuristic evaluation of active document"
+        {/* Coordinated Sidecar Panel: AI Assistant, Real-Time Lint, History (4 Cols) */}
+        <div className="lg:col-span-4 flex flex-col space-y-3.5 overflow-y-auto">
+          {/* Sidecar Tab Switcher */}
+          <div className="flex items-center p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] shrink-0">
+            <button
+              onClick={() => setSidecarTab('assistant')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                sidecarTab === 'assistant'
+                  ? 'bg-[var(--surface-3)] text-[var(--foreground)] shadow-2xs'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[var(--primary)]" />
+              <span>AI Assistant</span>
+            </button>
+
+            <button
+              onClick={() => setSidecarTab('diagnostics')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                sidecarTab === 'diagnostics'
+                  ? 'bg-[var(--surface-3)] text-[var(--foreground)] shadow-2xs'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-[var(--teal)]" />
+              <span>Lint Heuristics</span>
+            </button>
+
+            <button
+              onClick={() => setSidecarTab('history')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                sidecarTab === 'history'
+                  ? 'bg-[var(--surface-3)] text-[var(--foreground)] shadow-2xs'
+                  : 'text-[var(--foreground-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              <History className="w-3.5 h-3.5 text-[var(--warning)]" />
+              <span>Revisions</span>
+            </button>
+          </div>
+
+          {/* Tab 1: AI Assistant Panel */}
+          {sidecarTab === 'assistant' && (
+            <AIAssistantPanel
+              status={aiStatus}
+              selectedText={selectedText}
+              hasDocument={Boolean(selectedFile)}
+              onRunRewrite={handleRunRewrite}
+              onRunSimplify={handleRunSimplify}
+              onRunProcedure={handleRunProcedure}
+              onRunDocs={handleRunDocs}
+              onRunReleaseNotes={handleRunReleaseNotes}
+              loading={aiLoading}
+              activeRevision={activeRevision}
+              onOpenReview={() => setIsReviewOpen(true)}
             />
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                <span className="text-[var(--foreground)] font-medium">Top-level H1 Title</span>
-                {hasH1 ? (
-                  <Badge variant="success" size="xs">Present</Badge>
-                ) : (
-                  <Badge variant="error" size="xs">Missing H1</Badge>
-                )}
-              </div>
+          )}
 
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                <span className="text-[var(--foreground)] font-medium">Code Block Languages</span>
-                {codeBlocksWithoutLang === 0 ? (
-                  <Badge variant="success" size="xs">All tagged</Badge>
-                ) : (
-                  <Badge variant="warning" size="xs">{codeBlocksWithoutLang} untagged</Badge>
-                )}
-              </div>
+          {/* Tab 2: Real-Time Deterministic Quality Diagnostics */}
+          {sidecarTab === 'diagnostics' && (
+            <Card>
+              <CardHeader
+                title="Real-Time Lint Feedback"
+                subtitle="Live heuristic evaluation of active document"
+              />
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[var(--foreground)] font-medium">Top-level H1 Title</span>
+                  {hasH1 ? (
+                    <Badge variant="success" size="xs">Present</Badge>
+                  ) : (
+                    <Badge variant="error" size="xs">Missing H1</Badge>
+                  )}
+                </div>
 
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                <span className="text-[var(--foreground)] font-medium">Dense Paragraphs (&gt;150w)</span>
-                {longParagraphs === 0 ? (
-                  <Badge variant="success" size="xs">None</Badge>
-                ) : (
-                  <Badge variant="warning" size="xs">{longParagraphs} found</Badge>
-                )}
-              </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[var(--foreground)] font-medium">Code Block Languages</span>
+                  {codeBlocksWithoutLang === 0 ? (
+                    <Badge variant="success" size="xs">All tagged</Badge>
+                  ) : (
+                    <Badge variant="warning" size="xs">{codeBlocksWithoutLang} untagged</Badge>
+                  )}
+                </div>
 
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                <span className="text-[var(--foreground)] font-medium">Estimated Reading Time</span>
-                <span className="font-mono font-bold text-[var(--foreground)]">
-                  {Math.max(1, Math.ceil(words / 200))} min
-                </span>
-              </div>
-            </div>
-          </Card>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[var(--foreground)] font-medium">Dense Paragraphs (&gt;150w)</span>
+                  {longParagraphs === 0 ? (
+                    <Badge variant="success" size="xs">None</Badge>
+                  ) : (
+                    <Badge variant="warning" size="xs">{longParagraphs} found</Badge>
+                  )}
+                </div>
 
-          {/* AI-Assisted Roadmap (Clearly marked as future phase) */}
-          <Card className="border-[var(--primary)]/20 bg-gradient-to-b from-[var(--surface-1)] to-[var(--surface-2)]/40">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Bot className="w-4 h-4 text-[var(--primary)]" />
-                <h3 className="text-xs font-bold text-[var(--foreground)]">AI Assistant</h3>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[var(--foreground)] font-medium">Estimated Reading Time</span>
+                  <span className="font-mono font-bold text-[var(--foreground)]">
+                    {Math.max(1, Math.ceil(words / 200))} min
+                  </span>
+                </div>
               </div>
-              <Badge variant="cobalt" size="xs">Phase 2 Roadmap</Badge>
-            </div>
-            <p className="text-xs text-[var(--foreground-muted)] leading-relaxed mb-3">
-              Context-aware style rewriting, automated release-note generation, and side-by-side human review diffs are designed for future releases.
-            </p>
-            <div className="space-y-2 opacity-60 pointer-events-none">
-              <div className="p-2 rounded-lg border border-dashed border-[var(--border)] text-xs text-[var(--foreground-muted)] flex items-center justify-between">
-                <span>Side-by-side diff review</span>
-                <span className="text-[10px] font-mono">Planned</span>
-              </div>
-              <div className="p-2 rounded-lg border border-dashed border-[var(--border)] text-xs text-[var(--foreground-muted)] flex items-center justify-between">
-                <span>Release-note summarisation</span>
-                <span className="text-[10px] font-mono">Planned</span>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          )}
+
+          {/* Tab 3: Revisions History */}
+          {sidecarTab === 'history' && (
+            <Card>
+              <CardHeader
+                title="Revision History"
+                subtitle="Proposals generated for this workspace"
+              />
+              {recentRevisions.length === 0 ? (
+                <div className="p-6 text-center text-xs text-[var(--foreground-muted)]">
+                  No revisions recorded yet. Run an AI authoring operation to generate proposals.
+                </div>
+              ) : (
+                <div className="space-y-2 text-xs">
+                  {recentRevisions.map(rev => (
+                    <div
+                      key={rev.id}
+                      onClick={() => {
+                        setActiveRevision(rev);
+                        setIsReviewOpen(true);
+                      }}
+                      className="p-2.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] border border-[var(--border)] transition cursor-pointer flex items-center justify-between gap-3 group"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Badge
+                            variant={rev.status === 'accepted' ? 'success' : rev.status === 'rejected' ? 'neutral' : 'cobalt'}
+                            size="xs"
+                          >
+                            {rev.status}
+                          </Badge>
+                          <span className="font-bold text-[var(--foreground)] capitalize text-[11px]">
+                            {rev.operation_type}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[var(--foreground-muted)] truncate mt-0.5 font-mono">
+                          {rev.file_path}
+                        </p>
+                      </div>
+
+                      <div className="text-right text-[10px] text-[var(--foreground-dim)] font-mono shrink-0">
+                        {new Date(rev.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
         </div>
       </div>
+
+      {/* AI Review Modal */}
+      <AIReviewModal
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        revision={activeRevision}
+        onAccept={handleAcceptRevision}
+        onReject={handleRejectRevision}
+        accepting={accepting}
+        rejecting={rejecting}
+      />
     </div>
   );
 };

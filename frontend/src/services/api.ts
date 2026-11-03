@@ -119,4 +119,113 @@ export const api = {
     const q = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : '';
     return request<DashboardMetrics>(`/dashboard/metrics${q}`);
   },
+
+  // -----------------------------------------------------------
+  // Phase 2: AI Authoring
+  // -----------------------------------------------------------
+  async getAIStatus(): Promise<import('../types').AIStatus> {
+    return request<import('../types').AIStatus>('/ai/status');
+  },
+
+  async rewriteText(data: {
+    workspace_id: string;
+    file_path: string;
+    document_title?: string;
+    selected_text: string;
+    full_content?: string;
+    tone?: string;
+    custom_instruction?: string;
+    use_glossary?: boolean;
+  }): Promise<import('../types').AIRevision> {
+    return request<import('../types').AIRevision>('/ai/rewrite', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async simplifyText(data: {
+    workspace_id: string;
+    file_path: string;
+    selected_text: string;
+    audience?: string;
+    custom_instruction?: string;
+    use_glossary?: boolean;
+  }): Promise<import('../types').AIRevision> {
+    return request<import('../types').AIRevision>('/ai/simplify', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async generateProcedure(data: {
+    workspace_id: string;
+    file_path: string;
+    task_description: string;
+    prerequisites?: string[];
+    source_notes?: string;
+    expected_outcome: string;
+    warnings?: string[];
+    tone?: string;
+    use_glossary?: boolean;
+  }): Promise<import('../types').AIRevision> {
+    return request<import('../types').AIRevision>('/ai/generate-procedure', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async generateDocs(data: {
+    workspace_id: string;
+    file_path: string;
+    doc_type: string;
+    feature_brief: string;
+    code_examples?: string;
+    technical_specs?: string;
+    tone?: string;
+    use_glossary?: boolean;
+  }): Promise<import('../types').AIRevision> {
+    return request<import('../types').AIRevision>('/ai/generate-docs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async generateReleaseNotes(data: {
+    workspace_id: string;
+    file_path: string;
+    version: string;
+    release_date?: string;
+    added?: string[];
+    changed?: string[];
+    fixed?: string[];
+    deprecated?: string[];
+    removed?: string[];
+    tone?: string;
+  }): Promise<import('../types').AIRevision> {
+    return request<import('../types').AIRevision>('/ai/generate-release-notes', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async listRevisions(workspaceId: string): Promise<import('../types').AIRevision[]> {
+    return request<import('../types').AIRevision[]>(`/ai/revisions/${workspaceId}`);
+  },
+
+  async getRevision(workspaceId: string, revisionId: string): Promise<import('../types').AIRevision> {
+    return request<import('../types').AIRevision>(`/ai/revisions/${workspaceId}/${revisionId}`);
+  },
+
+  async acceptRevision(revisionId: string, currentDocumentContent?: string, force = false): Promise<import('../types').AcceptRevisionResponse> {
+    return request<import('../types').AcceptRevisionResponse>(`/ai/revisions/${revisionId}/accept`, {
+      method: 'POST',
+      body: JSON.stringify({ current_document_content: currentDocumentContent, force }),
+    });
+  },
+
+  async rejectRevision(revisionId: string): Promise<import('../types').AIRevision> {
+    return request<import('../types').AIRevision>(`/ai/revisions/${revisionId}/reject`, {
+      method: 'POST',
+    });
+  },
 };

@@ -100,3 +100,68 @@ export interface ScanRunOptions {
   custom_glossary?: Record<string, string>;
   required_sections?: string[];
 }
+
+// -------------------------------------------------------------
+// Phase 2: AI-Assisted Authoring Interfaces
+// -------------------------------------------------------------
+export interface AIStatus {
+  configured: boolean;
+  provider: string;
+  model: string;
+  base_url: string;
+  temperature: number;
+  timeout_seconds: number;
+  message: string;
+}
+
+export interface FindingSummary {
+  rule_id: string;
+  rule_name: string;
+  severity: 'error' | 'warning' | 'info';
+  category: string;
+  line_number?: number | null;
+  message: string;
+}
+
+export interface QualityImpactComparison {
+  score_before: number;
+  score_after: number;
+  score_delta: number;
+  grade_before: string;
+  grade_after: string;
+  findings_count_before: number;
+  findings_count_after: number;
+  resolved_findings_count: number;
+  new_findings_count: number;
+  resolved_findings: FindingSummary[];
+  new_findings: FindingSummary[];
+}
+
+export interface AIRevision {
+  id: string;
+  workspace_id: string;
+  file_path: string;
+  operation_type: 'rewrite' | 'simplify' | 'procedure' | 'docs' | 'release_notes';
+  tone?: string | null;
+  audience?: string | null;
+  custom_instruction?: string | null;
+  original_text: string;
+  proposed_text: string;
+  explanation: string;
+  warnings: string[];
+  meaning_changes: string[];
+  original_hash: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  quality_impact?: QualityImpactComparison | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export interface AcceptRevisionResponse {
+  revision_id: string;
+  status: string;
+  quality_impact: QualityImpactComparison;
+  saved_file_path: string;
+  updated_content: string;
+}
+

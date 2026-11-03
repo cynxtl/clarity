@@ -54,6 +54,20 @@ Scores are calculated using a transparent, documented mathematical formula:
   - `F` (< 60.0): Critical missing assets and structural failures.
 - **Sub-scores:** Category breakdowns for **Structural Hierarchy**, **Links & Assets Health**, and **Style & Terminology**.
 
+### 5. AI-Assisted Technical Authoring (Phase 2)
+The Writing Studio integrates a provider-independent AI authoring layer designed for technical documentation workflows. The human writer retains absolute control; AI suggestions are never silently written to disk.
+
+- **5 Authoring Operations**:
+  - **Rewrite for Clarity**: Restructures sentences for precision while preserving code, parameter names, and identifiers.
+  - **Simplify Content**: Tailors explanations for specific audiences (`General users`, `Developers`, `System administrators`, `Technical support`).
+  - **Procedure Generator**: Formulates step-by-step instructions with prerequisites, numbered actions, expected outcomes, and troubleshooting notes.
+  - **Documentation Generator**: Drafts comprehensive guides (`Feature Overview`, `Installation`, `Configuration`, `API Usage`, `Troubleshooting`) from briefs and snippets.
+  - **Release Notes Generator**: Translates structured engineering changes (`Added`, `Changed`, `Fixed`, `Deprecated`, `Removed`) into customer-facing release notes.
+- **Style Guide & Terminology Enforcement**: Automatically injects configured preferred terms (e.g. `allowlist`, `on-premises`, `authentication token`) into authoring prompts.
+- **Human Review & Diff Inspection**: Side-by-side comparison modal highlighting text differences, explanations, and warnings.
+- **Deterministic Quality Impact Comparison**: Evaluates proposals against the 12 AST validation rules before acceptance, showing predicted score improvements and resolved findings.
+- **Stale Collision Protection**: Verifies document hashes prior to applying revisions, halting if the document was altered concurrently.
+
 ---
 
 ## Architecture & Technology Stack
@@ -81,6 +95,25 @@ clarity/
 ├── pytest.ini                 # Pytest configuration
 ├── README.md                  # System overview and manual
 └── PROJECT_STATUS.md          # Completed features and roadmap
+```
+
+---
+
+### AI Provider Configuration (Phase 2)
+
+Clarity supports any OpenAI-compatible provider (OpenAI, Azure, Groq, Ollama, DeepSeek, vLLM). Configure the following variables in your server environment or `.env`:
+
+```bash
+# Required to enable live AI features (if omitted, Clarity displays offline guidance):
+CLARITY_AI_API_KEY=your_api_key_here
+
+# Optional configuration (defaults shown):
+CLARITY_AI_PROVIDER=openai_compatible
+CLARITY_AI_BASE_URL=https://api.openai.com/v1
+CLARITY_AI_MODEL=gpt-4o-mini
+CLARITY_AI_TEMPERATURE=0.2
+CLARITY_AI_TIMEOUT_SECONDS=30.0
+CLARITY_AI_MAX_INPUT_CHARS=40000
 ```
 
 ---

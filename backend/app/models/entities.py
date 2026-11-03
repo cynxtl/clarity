@@ -32,6 +32,7 @@ class Workspace(Base):
 
     files = relationship("DocumentFile", back_populates="workspace", cascade="all, delete-orphan")
     scans = relationship("Scan", back_populates="workspace", cascade="all, delete-orphan")
+    revisions = relationship("AIRevision", back_populates="workspace", cascade="all, delete-orphan")
 
 class DocumentFile(Base):
     __tablename__ = "document_files"
@@ -86,3 +87,27 @@ class ScanIssue(Base):
     suggested_fix = Column(Text, nullable=True)
 
     scan = relationship("Scan", back_populates="issues")
+
+class AIRevision(Base):
+    __tablename__ = "ai_revisions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_path = Column(String(500), nullable=False)
+    operation_type = Column(String(50), nullable=False, index=True) # rewrite, simplify, procedure, docs, release_notes
+    tone = Column(String(50), nullable=True)
+    audience = Column(String(50), nullable=True)
+    custom_instruction = Column(Text, nullable=True)
+    original_text = Column(Text, nullable=False)
+    proposed_text = Column(Text, nullable=False)
+    explanation = Column(Text, nullable=False)
+    warnings_json = Column(Text, default="[]")
+    meaning_changes_json = Column(Text, default="[]")
+    original_hash = Column(String(64), nullable=False) # SHA-256 for collision/stale detection
+    status = Column(String(20), default="pending", index=True) # pending, accepted, rejected
+    quality_impact_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    reviewed_at = Column(DateTime, nullable=True)
+
+    workspace = relationship("Workspace", back_populates="revisions")
+
