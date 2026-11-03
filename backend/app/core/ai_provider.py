@@ -99,25 +99,47 @@ class OpenAICompatibleProvider(BaseAIProvider):
         temperature: Optional[float] = None,
         timeout: Optional[float] = None,
     ):
-        self.base_url = (base_url or settings.AI_BASE_URL).rstrip("/")
-        self.api_key = api_key if api_key is not None else settings.AI_API_KEY
-        self.model = model or settings.AI_MODEL
+        self._custom_base_url = base_url
+        self._custom_api_key = api_key
+        self._custom_model = model
         self.temperature = temperature if temperature is not None else settings.AI_TEMPERATURE
         self.timeout = timeout if timeout is not None else settings.AI_TIMEOUT_SECONDS
 
+    def _resolve_config(self) -> tuple[str, str, str]:
+        """Dynamically resolve api_key, base_url, and model, auto-detecting Groq if key starts with gsk_."""
+        key = (self._custom_api_key or os.getenv("CLARITY_AI_API_KEY", "") or settings.AI_API_KEY).strip()
+
+        is_groq_key = key.startswith("gsk_")
+        env_base = (self._custom_base_url or os.getenv("CLARITY_AI_BASE_URL", "") or settings.AI_BASE_URL).rstrip("/")
+        is_groq_url = "groq.com" in env_base.lower()
+
+        if is_groq_key or is_groq_url:
+            base_url = env_base if is_groq_url else "https://api.groq.com/openai/v1"
+            # If model is default gpt-4o-mini or empty, switch to Groq production model
+            model = self._custom_model or os.getenv("CLARITY_AI_MODEL", "")
+            if not model or model == "gpt-4o-mini":
+                model = "llama-3.3-70b-versatile"
+        else:
+            base_url = env_base
+            model = self._custom_model or os.getenv("CLARITY_AI_MODEL", "") or settings.AI_MODEL
+
+        return key, base_url, model
+
     def is_configured(self) -> bool:
-        return bool(self.api_key and self.api_key.strip())
+        key, _, _ = self._resolve_config()
+        return bool(key)
 
     def get_status(self) -> Dict[str, Any]:
-        masked_url = self.base_url
+        key, base_url, model = self._resolve_config()
+        provider_name = "groq" if "groq.com" in base_url.lower() else "openai_compatible"
         return {
-            "configured": self.is_configured(),
-            "provider": "openai_compatible",
-            "model": self.model,
-            "base_url": masked_url,
+            "configured": bool(key),
+            "provider": provider_name,
+            "model": model,
+            "base_url": base_url,
             "temperature": self.temperature,
             "timeout_seconds": self.timeout,
-            "message": "AI Provider is active and configured." if self.is_configured() else "CLARITY_AI_API_KEY is not configured on the server. AI features require an API key."
+            "message": f"AI Provider ({provider_name}) is active and configured." if bool(key) else "CLARITY_AI_API_KEY is not configured on the server. AI features require an API key."
         }
 
     def generate_structured(
@@ -126,19 +148,20 @@ class OpenAICompatibleProvider(BaseAIProvider):
         user_prompt: str,
         temperature: Optional[float] = None
     ) -> AIResponseOutput:
-        if not self.is_configured():
+        key, base_url, model = self._resolve_config()
+        if not key:
             raise AIConfigurationError()
 
-        endpoint = f"{self.base_url}/chat/completions"
+        endpoint = f"{base_url}/chat/completions"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
 
         temp = temperature if temperature is not None else self.temperature
 
         payload = {
-            "model": self.model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -153,9 +176,35 @@ class OpenAICompatibleProvider(BaseAIProvider):
                 resp = client.post(endpoint, headers=headers, json=payload)
 
                 if resp.status_code == 401 or resp.status_code == 403:
-                    raise AIAuthenticationError()
+                    err_msg = ""
+                    try:
+                        err_data = resp.json()
+                        err_msg = err_data.get("error", {}).get("message", "")
+                    except Exception:
+                        pass
+                    detail = f"AI provider authentication failed: {err_msg}" if err_msg else "AI provider authentication failed. Please check your API key."
+                    raise AIAuthenticationError(detail)
                 elif resp.status_code == 429:
                     raise AIRateLimitError()
+                elif resp.status_code == 400:
+                    err_msg = ""
+                    try:
+                        err_data = resp.json()
+                        err_msg = err_data.get("error", {}).get("message", "")
+                    except Exception:
+                        pass
+                    # If model doesn't support json_object mode, retry without it
+                    if "response_format" in err_msg.lower() or "json_object" in err_msg.lower():
+                        payload_no_format = dict(payload)
+                        del payload_no_format["response_format"]
+                        retry_resp = client.post(endpoint, headers=headers, json=payload_no_format)
+                        if retry_resp.status_code == 200:
+                            data = retry_resp.json()
+                            choices = data.get("choices", [])
+                            content_str = choices[0].get("message", {}).get("content", "")
+                            parsed = extract_json_payload(content_str)
+                            return AIResponseOutput(**parsed)
+                    raise AIValidationError(f"Provider request error: {err_msg or resp.text}")
                 elif resp.status_code >= 500:
                     raise AIProviderError(f"Upstream provider returned server error ({resp.status_code})")
                 elif resp.status_code != 200:

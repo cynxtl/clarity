@@ -200,13 +200,8 @@ export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           <div className="w-7 h-7 rounded-lg bg-[var(--primary-light)] text-[var(--primary)] border border-[var(--primary)]/20 flex items-center justify-center shadow-xs">
             <Sparkles className="w-3.5 h-3.5" />
           </div>
-          <div>
-            <h3 className="text-xs font-bold text-[var(--foreground)] tracking-tight">AI Authoring Assistant</h3>
-            <span className="text-[10px] text-[var(--foreground-muted)] font-mono">{status.model}</span>
-          </div>
+          <h3 className="text-xs font-bold text-[var(--foreground)] tracking-tight">AI Authoring Assistant</h3>
         </div>
-
-        <Badge variant="cobalt" size="xs">Phase 2 Active</Badge>
       </div>
 
       {/* Pending Revision Notification Alert */}
